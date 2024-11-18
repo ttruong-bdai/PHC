@@ -26,6 +26,12 @@ metadata: false
 play: ${test}
 train: True
 
+# Takara
+mode: None 
+rand_start: False
+collect_start_idx: 0 
+collect_step_idx: None 
+act_noise: 0 
 
 ####### Testing Configs. ########
 server_mode: False

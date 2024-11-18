@@ -106,6 +106,14 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         self.vis_contact = False
         self._sampled_motion_ids = torch.arange(self.num_envs).to(self.device)
         self.create_o3d_viewer()
+
+        # Takara
+        self.phc_obs = None    
+        self.diff_obs = None
+        # import ipdb; idpb.set_trace()
+        self.collect_start_idx = cfg['env']['collect_start_idx'] # defined in humanoid_im_mcp
+        self.collect_step_idx = cfg['env']['collect_step_idx']
+        self.mode = cfg['env']['mode']
         return
     
     
@@ -124,7 +132,7 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         self.recording_state_change_o3d_img = True
         self.recording_state_change = True # only intialize from o3d. 
         
-        
+         
     def hide_ref(self, action):
         flags.show_traj = not flags.show_traj
     
@@ -305,7 +313,6 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
     def _load_motion(self, motion_train_file, motion_test_file=[]):
         assert (self._dof_offsets[-1] == self.num_dof)
-
         if self.humanoid_type in ["smpl", "smplh", "smplx"]:
             motion_lib_cfg = EasyDict({
                 "motion_file": motion_train_file,
@@ -318,6 +325,9 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
                 "smpl_type": self.humanoid_type,
                 "randomrize_heading": True,
                 "device": self.device,
+                # Takara
+                "collect_start_idx": self.collect_start_idx,
+                "collect_step_idx": self.collect_step_idx, 
             })
             motion_eval_file = motion_train_file
             self._motion_train_lib = MotionLibSMPL(motion_lib_cfg)
@@ -713,6 +723,8 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         ref_body_vel_subset = ref_body_vel[..., self._track_bodies_id, :]
         ref_body_ang_vel_subset = ref_body_ang_vel[..., self._track_bodies_id, :]
 
+        
+
         if self.obs_v == 1 :
             obs = compute_imitation_observations(root_pos, root_rot, body_pos_subset, body_rot_subset, body_vel_subset, body_ang_vel_subset, ref_rb_pos_subset, ref_rb_rot_subset, ref_body_vel_subset, ref_body_ang_vel_subset, time_steps, self._has_upright_start)
 
@@ -723,7 +735,6 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         elif self.obs_v == 3:
             obs = compute_imitation_observations_v3(root_pos, root_rot, body_pos_subset, body_rot_subset, body_vel_subset, body_ang_vel_subset, ref_rb_pos_subset, ref_rb_rot_subset, ref_body_vel_subset, ref_body_ang_vel_subset, time_steps, self._has_upright_start)
         elif self.obs_v == 4 or self.obs_v == 5 or self.obs_v == 6 or self.obs_v == 8 or self.obs_v == 9:
-
             if self.zero_out_far:
                 close_distance = self.close_distance
                 distance = torch.norm(root_pos - ref_rb_pos_subset[..., 0, :], dim=-1)
@@ -749,7 +760,6 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
             if self.obs_v == 4 or self.obs_v == 6:
                 obs = compute_imitation_observations_v6(root_pos, root_rot, body_pos_subset, body_rot_subset, body_vel_subset, body_ang_vel_subset, ref_rb_pos_subset, ref_rb_rot_subset, ref_body_vel_subset, ref_body_ang_vel_subset, time_steps, self._has_upright_start)
-                
                 # obs[:, -1] = env_ids.clone().float(); print('debugging')
                 # obs[:, -2] = self.progress_buf[env_ids].clone().float(); print('debugging')
                 
@@ -795,7 +805,14 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
                 ref_rb_rot_subset[random_occlu_idx] = body_rot_subset[random_occlu_idx]
             
             obs = compute_imitation_observations_v7(root_pos, root_rot, body_pos_subset, body_vel_subset, ref_rb_pos_subset, ref_body_vel_subset, time_steps, self._has_upright_start)
+            # self.phc_obs = compute_imitation_observations_v7(root_pos, root_rot, body_pos_subset, body_vel_subset, ref_rb_pos_subset, ref_body_vel_subset, time_steps, self._has_upright_start)
             
+            dof_pos_subset = self._dof_pos[env_ids].reshape(-1, len(self._dof_names), 3)[..., self._track_bodies_id[1:] - 1, :]
+            dof_vel_subset = self._dof_vel[env_ids].reshape(-1, len(self._dof_names), 3)[..., self._track_bodies_id[1:] - 1, :]
+            # import ipdb; ipdb.set_trace()
+            self.phc_obs = compute_global_observations(root_pos, root_rot, body_pos_subset, body_rot_subset, body_vel_subset, body_ang_vel_subset, dof_pos_subset, dof_vel_subset, time_steps, self._has_upright_start)
+            self.diff_obs = diff_obs(root_pos, root_rot, body_pos_subset, body_rot_subset, body_vel_subset, body_ang_vel_subset, ref_rb_pos_subset, ref_rb_rot_subset, ref_body_vel_subset, ref_body_ang_vel_subset, time_steps, self._has_upright_start)
+        
         if save_buffer:
             if self._fut_tracks:
                 self.ref_body_pos[env_ids] = ref_rb_pos[..., 0, :, :]
@@ -940,6 +957,10 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         if flags.test:
             motion_times[:] = 0
         
+        # Takara
+        if flags.rand_start:
+            motion_times = self._sample_time(self._sampled_motion_ids[env_ids])
+
         if self.humanoid_type in ["smpl", "smplh", "smplx"] :
             motion_res = self._get_state_from_motionlib_cache(self._sampled_motion_ids[env_ids], motion_times, self._global_offset[env_ids])
             root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, ref_rb_pos, ref_rb_rot, ref_body_vel, ref_body_ang_vel = \
@@ -1033,9 +1054,7 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
         return pd_tar
     
-
     def pre_physics_step(self, actions):
-
         super().pre_physics_step(actions)
         self._update_cycle_count()
 
@@ -1101,7 +1120,7 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
             #     self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, self._rigid_body_pos, pass_time_max, self._enable_early_termination, 0.3, flags.no_collision_check)
             self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_im_reset(  # Humanoid reset
                 self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, self._rigid_body_pos[..., self._reset_bodies_id, :], ref_rb_pos[..., self._reset_bodies_id, :], pass_time, self._enable_early_termination, self._termination_distances[..., self._reset_bodies_id],
-                flags.no_collision_check, flags.im_eval and (not self.strict_eval))
+                flags.no_collision_check, flags.im_eval and (not self.strict_eval), flags.rand_start)
 
         else:
             body_pos = self._rigid_body_pos[..., self._reset_bodies_id, :].clone()
@@ -1112,7 +1131,7 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
 
             self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_im_reset(self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, \
                                                                                body_pos, ref_body_pos, pass_time, self._enable_early_termination,
-                                                                               self._termination_distances[..., self._reset_bodies_id], flags.no_collision_check, flags.im_eval and (not self.strict_eval))
+                                                                               self._termination_distances[..., self._reset_bodies_id], flags.no_collision_check, flags.im_eval and (not self.strict_eval), flags.rand_start)
         is_recovery = torch.logical_and(~pass_time, self._cycle_counter > 0)  # pass time should override the cycle counter.
         self.reset_buf[is_recovery] = 0
         self._terminate_buf[is_recovery] = 0
@@ -1123,10 +1142,113 @@ class HumanoidIm(humanoid_amp_task.HumanoidAMPTask):
         self._update_marker()
         return
 
+    # Takara
+    def _shift_character(self):
+        print("#################### Generating Shift State ####################")
+        env_ids = to_torch(np.arange(self.num_envs), device=self.device, dtype=torch.long)
+        # root_states = self._initial_humanoid_root_states[env_ids].clone()
+        root_states = self._humanoid_root_states[env_ids].clone()
+        
+        # root_states[..., 0:2] += torch.randn_like(root_states[..., 0:2]) * .25   ## Random root position on plane
+        
+        min_magnitude = 0.1
+        max_magnitude = 0.2 # .3
+        noise = torch.rand(root_states[..., 0:2].size()).to('cuda') 
+
+        noise = min_magnitude + (max_magnitude - min_magnitude) * noise 
+        signs = torch.sign(torch.rand(root_states[..., 0:2].size()) - 0.5).to('cuda')
+        noise = noise * signs
+        root_states[..., 0:2] += noise 
+        
+        # generate a yaw offset for the root rotation using scipy.spatial.transform.Rotation 
+        quat = root_states[..., 3:7]
+        
+        # get random yaw offset in degrees in the batch shape of the input quaternion with min and max magnitudes like 10 to 30 degrees and -10 to -30 degrees
+        yaw_offset_degrees = np.random.uniform(-60, 60, size=quat.shape[0])
+        yaw_offset_radians = np.deg2rad(yaw_offset_degrees)
+
+        # Create a rotation object for the yaw offset (about the z-axis)
+        yaw_offset_rotation = sRot.from_euler('z', yaw_offset_radians)
+
+        # Convert the given quaternion to a rotation object
+        original_rotation = sRot.from_quat(quat)
+
+        # Combine the original rotation with the yaw offset rotation
+        combined_rotation = original_rotation * yaw_offset_rotation
+
+        # Convert the resulting rotation back to a quaternion in x, y, z, w format
+        quat2 = combined_rotation.as_quat()
+
+        root_states[..., 3:7] = torch.tensor(quat2).clone().to('cuda')
+
+        self._humanoid_root_states[env_ids] = root_states
+
+        env_ids_int32 = self._humanoid_actor_ids[env_ids]
+        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+        # Add Gaussian noise to dof_state
+        mean = self._dof_state
+        std = 0.02  # Set your desired standard deviation here
+        noise = torch.randn_like(mean) * std
+        dof_state_with_noise = mean + noise
+        
+        self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(dof_state_with_noise), gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+        return
+    
 
 #####################################################################
 ###=========================jit functions=========================###
 #####################################################################
+
+# Takra
+def compute_global_observations(root_pos, root_rot, body_pos, body_rot, body_vel, body_ang_vel, dof_pos, dof_vel, time_steps, upright):
+    # type: (Tensor, Tensor, Tensor,Tensor, Tensor, Tensor, int, bool) -> Tensor
+    # No rotation information. Leave IK for RL.
+    # Future tracks in this obs will not contain future diffs.
+    obs = []
+    B, J, _ = body_pos.shape
+
+    if not upright:
+        root_rot = remove_base_rot(root_rot)
+    
+    # import ipdb; ipdb.set_trace()
+    obs.append(root_pos.view(B, time_steps, -1))  # nx3
+    obs.append(root_rot.view(B, time_steps, -1))  # nx4
+    
+    obs.append(body_pos.view(B, time_steps, -1))  # nx72 (3x24 body pos)  
+    obs.append(body_rot.view(B, time_steps, -1))  # nx96 (4x24 body pos)  
+    
+    obs.append(body_vel.view(B, time_steps, -1))  # nx72    
+    obs.append(body_ang_vel.view(B, time_steps, -1))  # nx72 
+        
+    obs.append(dof_pos.view(B, time_steps, -1))  # nx69 
+    obs.append(dof_vel.view(B, time_steps, -1))  # nx69 
+
+
+    obs = torch.cat(obs, dim=-1).view(B, -1)
+
+    return obs
+
+def diff_obs(root_pos, root_rot, body_pos, body_rot, body_vel, body_ang_vel, ref_body_pos, ref_body_rot, ref_root_vel, ref_body_root_ang_vel, time_steps, upright):
+    # type: (Tensor, Tensor, Tensor,Tensor, Tensor, Tensor, int, bool) -> Tensor
+    # No rotation information. Leave IK for RL.
+    # Future tracks in this obs will not contain future diffs.
+    obs = []    
+    B, J, _ = body_pos.shape
+
+    if not upright:
+        root_rot = remove_base_rot(root_rot)
+    
+    # import ipdb; ipdb.set_trace()
+    obs.append(root_pos.view(B, time_steps, -1))  # nx3
+    obs.append(root_rot.view(B, time_steps, -1))  # nx4
+    
+    obs.append(body_pos.view(B, time_steps, -1))  # nx72 (3x24 body pos)  
+    obs.append(body_vel.view(B, time_steps, -1))  # nx72    
+    
+    obs = torch.cat(obs, dim=-1).view(B, -1)
+    return obs
 
 
 @torch.jit.script
@@ -1146,7 +1268,7 @@ def compute_imitation_observations(root_pos, root_rot, body_pos, body_rot, body_
 
     diff_global_body_pos = ref_body_pos.view(B, time_steps, J, 3) - body_pos.view(B, 1, J, 3)
     diff_global_body_rot = torch_utils.quat_mul(ref_body_rot.view(B, time_steps, J, 4), torch_utils.quat_conjugate(body_rot).repeat_interleave(time_steps, 0).view(B, time_steps, J, 4))
-
+    
     diff_local_body_pos_flat = torch_utils.my_quat_rotate(heading_inv_rot_expand.view(-1, 4), diff_global_body_pos.view(-1, 3))
     diff_local_body_rot_flat = torch_utils.quat_mul(torch_utils.quat_mul(heading_inv_rot_expand.view(-1, 4), diff_global_body_rot.view(-1, 4)), heading_rot_expand.view(-1, 4))  # Need to be change of basis
 
@@ -1288,7 +1410,7 @@ def compute_imitation_observations_v6(root_pos, root_rot, body_pos, body_rot, bo
     return obs
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_imitation_observations_v7(root_pos, root_rot, body_pos, body_vel, ref_body_pos, ref_body_vel, time_steps, upright):
     # type: (Tensor, Tensor, Tensor,Tensor, Tensor, Tensor, int, bool) -> Tensor
     # No rotation information. Leave IK for RL.
@@ -1298,7 +1420,7 @@ def compute_imitation_observations_v7(root_pos, root_rot, body_pos, body_vel, re
 
     if not upright:
         root_rot = remove_base_rot(root_rot)
-
+    # import ipdb; ipdb.set_trace()
     heading_inv_rot = torch_utils.calc_heading_quat_inv(root_rot)
     heading_inv_rot_expand = heading_inv_rot.unsqueeze(-2).repeat((1, body_pos.shape[1], 1)).repeat_interleave(time_steps, 0)
 
@@ -1318,7 +1440,7 @@ def compute_imitation_observations_v7(root_pos, root_rot, body_pos, body_vel, re
     obs.append(diff_local_body_pos_flat.view(B, time_steps, -1))  # 1 * 10 * 3 * 3
     obs.append(diff_local_vel.view(B, time_steps, -1))  # 3 * 3
     obs.append(local_ref_body_pos.view(B, time_steps, -1))  # 2
-
+    
     obs = torch.cat(obs, dim=-1).view(B, -1)
     return obs
 
@@ -1507,15 +1629,20 @@ def compute_location_reward(root_pos, tar_pos):
     return reward, reward
 
 
-@torch.jit.script
-def compute_humanoid_im_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, ref_body_pos, pass_time, enable_early_termination, termination_distance, disableCollision, use_mean):
+# @torch.jit.script
+def compute_humanoid_im_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, ref_body_pos, pass_time, enable_early_termination, termination_distance, disableCollision, use_mean, rand_start):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, bool, Tensor, bool, bool) -> Tuple[Tensor, Tensor]
+    # import ipdb; ipdb.set_trace()
     terminated = torch.zeros_like(reset_buf)
     if (enable_early_termination):
         if use_mean:
             has_fallen = torch.any(torch.norm(rigid_body_pos - ref_body_pos, dim=-1).mean(dim=-1, keepdim=True) > termination_distance[0], dim=-1)  # using average, same as UHC"s termination condition
         else:
             has_fallen = torch.any(torch.norm(rigid_body_pos - ref_body_pos, dim=-1) > termination_distance, dim=-1)  # using max
+
+        if rand_start: 
+            has_fallen = torch.any(torch.norm(rigid_body_pos - ref_body_pos, dim=-1) > termination_distance*2, dim=-1)
+        
         # first timestep can sometimes still have nonzero contact forces
         # so only check after first couple of steps
         has_fallen *= (progress_buf > 1)
@@ -1562,11 +1689,10 @@ def compute_location_observations(root_pos, root_rot, target_pos, upright):
     return obs
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_humanoid_traj_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, pass_time, enable_early_termination, termination_heights, disableCollision):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
-
     if (enable_early_termination):
         masked_contact_buf = contact_buf.clone()
         masked_contact_buf[:, contact_body_ids, :] = 0

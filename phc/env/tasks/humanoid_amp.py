@@ -67,7 +67,7 @@ HACK_CONSISTENCY_TEST = False
 HACK_OUTPUT_MOTION = False
 HACK_OUTPUT_MOTION_ALL = False
 
-
+ 
 class HumanoidAMP(Humanoid):
 
     class StateInit(Enum):
@@ -91,7 +91,7 @@ class HumanoidAMP(Humanoid):
         self._amp_root_height_obs = cfg["env"].get("ampRootHeightObs", cfg["env"].get("root_height_obs", True))
         
         self._num_amp_obs_enc_steps = cfg["env"].get("numAMPEncObsSteps", self._num_amp_obs_steps) # Calm
-
+        
         assert (self._num_amp_obs_steps >= 2)
 
         if ("enableHistObs" in cfg["env"]):
@@ -483,7 +483,7 @@ class HumanoidAMP(Humanoid):
         num_envs = env_ids.shape[0]
         ref_probs = to_torch(np.array([self._hybrid_init_prob] * num_envs), device=self.device)
         ref_init_mask = torch.bernoulli(ref_probs) == 1.0
-
+            
         ref_reset_ids = env_ids[ref_init_mask]
 
         if (len(ref_reset_ids) > 0):

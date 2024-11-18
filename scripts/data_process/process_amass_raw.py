@@ -63,26 +63,27 @@ joints_to_use = np.array(
 )
 joints_to_use = np.arange(0, 156).reshape((-1, 3))[joints_to_use].reshape(-1)
 
+# cannot process all sequences due to memory limit of 64 gigs on the desktop 
 all_sequences = [
     "ACCAD",
-    "BMLmovi",
+    # "BMLmovi", # file deleted due to corruption
     "BioMotionLab_NTroje",
     "CMU",
-    "DFaust_67",
-    "EKUT",
+    # "DFaust_67",
+    # "EKUT",
     "Eyes_Japan_Dataset",
-    "HumanEva",
+    # "HumanEva",
     "KIT",
     "MPI_HDM05",
-    "MPI_Limits",
-    "MPI_mosh",
-    "SFU",
-    "SSM_synced",
-    "TCD_handMocap",
-    "TotalCapture",
-    "Transitions_mocap",
-    "BMLhandball",
-    "DanceDB"
+    # "MPI_Limits",
+    # "MPI_mosh",
+    # "SFU",
+    # "SSM_synced",
+    # "TCD_handMocap",
+    # "TotalCapture",
+    # "Transitions_mocap",
+    # "BMLhandball",
+    # "DanceDB"
 ]
 
 def read_data(folder, sequences):
@@ -121,8 +122,9 @@ def read_single_sequence(folder, seq_name):
 
             if fname.endswith("shape.npz"):
                 continue
+            # print(fname)
+            data = dict(np.load(fname, allow_pickle=True))
 
-            data = dict(np.load(fname))
             # data['poses'] = pose = data['poses'][:, joints_to_use]
 
             # shape = np.repeat(data['betas'][:10][np.newaxis], pose.shape[0], axis=0)
@@ -146,12 +148,18 @@ def read_seq_data(folder, nsubjects, fps):
 
         for action in actions:
             data = np.load(osp.join(folder, subject, action))
-            mocap_framerate = int(data["mocap_framerate"])
+
+            if "mocap_framerate" in data.keys():
+                mocap_framerate = int(data["mocap_framerate"])
+            
+            if "mocap_frame_rate" in data.keys():
+                mocap_framerate = int(data["mocap_frame_rate"])
+
             sampling_freq = mocap_framerate // fps
             sequences[(subject, action)] = data["poses"][
                 0::sampling_freq, joints_to_use
             ]
-
+        
     train_set = {}
     test_set = {}
 
@@ -180,6 +188,7 @@ if __name__ == "__main__":
     out_path = Path(args.out_dir)
     out_path.mkdir(exist_ok=True)
     db_file = osp.join(out_path, "amass_db_smplh.pt")
+    # db_file = osp.join(out_path, "kit_smplh.pt")
 
     db = read_data(args.dir, sequences=args.sequences)
      

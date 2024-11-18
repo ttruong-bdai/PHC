@@ -807,6 +807,7 @@ class Humanoid(BaseTask):
 
                 humanoid_asset = self.gym.load_asset(self.sim, asset_root, asset_file_real, asset_options)
                 actuator_props = self.gym.get_asset_actuator_properties(humanoid_asset)
+                # import ipdb; ipdb.set_trace()
                 motor_efforts = [prop.motor_effort for prop in actuator_props]
 
                 # create force sensors at the feet
@@ -1222,7 +1223,7 @@ class Humanoid(BaseTask):
                         
             pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
             self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
-        
+            # import ipdb; ipdb.set_trace()
         else:
             if self.control_mode == "force":
                 actions_full = self.actions
@@ -1231,6 +1232,8 @@ class Humanoid(BaseTask):
                 self.gym.set_dof_actuation_force_tensor(self.sim, force_tensor)
             elif self.control_mode == "pd":
                 self.pd_tar = self._action_to_pd_targets(self.actions)
+
+
         return
     
     
@@ -1261,7 +1264,10 @@ class Humanoid(BaseTask):
             self.control_i = i
             self.render()
             if not self.paused and self.enable_viewer_sync:
-                if self.control_mode == "pd": #### Using simple pd controller. 
+                if self.control_mode == "pd": #### Using simple pd controller.
+                    
+                    # import ipdb; ipdb.set_trace() 
+
                     self.torques = self._compute_torques(self.pd_tar)
                     self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
                     self.gym.simulate(self.sim)

@@ -9,5 +9,6 @@ flags = Flags({
     'test': False, 
     'debug': False,
     "real_traj": False,
-    "im_eval": False,
+    "im_eval": False, 
+    "rand_start": False,  # Takara
     })

@@ -101,6 +101,7 @@ def load_cfg(args):
 
     cfg["name"] = args.task
     cfg["headless"] = args.headless
+    # cfg["mode"] = args.mode
 
     # Set physics domain randomization
     if "task" in cfg:
@@ -207,6 +208,31 @@ def parse_sim_params(args, cfg, cfg_train):
 
 def get_args(benchmark=False):
     custom_parameters = [
+        # Takara (dont think this matters)
+        {
+            "name": "--mode",
+            "default": None,
+            "required":True,
+            "type": str, 
+            "choices": ['collect', 'diffpol'],
+            "help": "No SMPL_robot dependency"
+        },
+        {
+            "name": "--rand_start",
+            "action": "store_true",
+            "default": False,   
+            "help": "Initailizes character in random pose"
+        },
+        # {
+        #     "name": "--act_noise",
+        #     "default": 0,
+        #     "required":True,
+        #     "type": float, 
+        #     "help": "No SMPL_robot dependency"
+        # },
+        
+
+
         {
             "name": "--test",
             "action": "store_true",
@@ -446,6 +472,10 @@ def get_args(benchmark=False):
             "default": False,
             "help": "No SMPL_robot dependency"
         },
+
+
+
+
     ]
 
     if benchmark:

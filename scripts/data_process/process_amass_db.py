@@ -160,13 +160,29 @@ def process_qpos_list(qpos_list):
     amass_res = {}
     removed_k = []
     pbar = qpos_list
+    error_counter = 0
     for (k, v) in tqdm(pbar):
         # print("=" * 20)
         k = "0-" + k
         seq_name = k
         betas = v["betas"]
         gender = v["gender"]
-        amass_fr = v["mocap_framerate"]
+        # import ipdb; ipdb.set_trace()
+        
+        if "mocap_frame_rate" in v.keys():
+            amass_fr = v["mocap_frame_rate"]
+        if "mocap_framerate" in v.keys():
+            amass_fr = v["mocap_framerate"]
+        # else:
+        #     import ipdb; ipdb.set_trace()
+        # print(v.keys())
+        # print()
+        if 'poses' not in v.keys():
+            error_counter+=1 
+            print('files skipped', error_counter)
+            continue 
+
+
         skip = int(amass_fr / target_fr)
         amass_pose = v["poses"][::skip]
         amass_trans = v["trans"][::skip]
@@ -182,8 +198,8 @@ def process_qpos_list(qpos_list):
             else:
                 print("issue irrecoverable", k, issue)
                 continue
-
-        seq_length = amass_pose.shape[0]
+        
+        seq_length = amass_pose.shape[0]    
         if seq_length < 10:
             continue
         with torch.no_grad():
@@ -226,7 +242,9 @@ def process_qpos_list(qpos_list):
 amass_splits = {
     'valid': ['HumanEva', 'MPI_HDM05', 'SFU', 'MPI_mosh'],
     'test': ['Transitions_mocap', 'SSM_synced'],
-    'train': ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'BML', 'EKUT', 'TCD_handMocap', "BMLhandball", "DanceDB", "ACCAD", "BMLmovi", "BioMotionLab", "Eyes", "DFaust"]  # Adding ACCAD
+    # 'train': ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'BML', 'EKUT', 'TCD_handMocap', "BMLhandball", "DanceDB", "ACCAD", "BMLmovi", "BioMotionLab", "Eyes", "DFaust"]  # Adding ACCAD and others
+    'train': ['Transitions_mocap', 'SSM_synced', 'HumanEva', 'MPI_HDM05', 'SFU', 'MPI_mosh', 'CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'BML', 'EKUT', 'TCD_handMocap', "BMLhandball", "DanceDB", "ACCAD", "BMLmovi", "BioMotionLab", "Eyes", "DFaust"]  # Adding ACCAD and others
+
 }
 
 amass_split_dict = {}
@@ -237,12 +255,14 @@ for k, v in amass_splits.items():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--path", type=str, default="sample_data/amass_db_smplh.pt")
+    # parser.add_argument("--path", type=str, default="sample_data/amass_db_smplh.pt")
+    parser.add_argument("--path", type=str, default="/home/ttruong/PHC/out/amass_db_smplh.pt")
+
     args = parser.parse_args()
 
     np.random.seed(0)
     flags.debug = args.debug
-    take_num = "copycat_take6"
+    take_num = "copycat_take7"
     amass_seq_data = {}
     seq_length = -1
 
@@ -251,7 +271,14 @@ if __name__ == "__main__":
     counter = 0
     seq_counter = 0
     db_dataset = args.path
+
+
+    # with open(db_dataset,'r') as f:
+    print('loading_data')
     amass_db = joblib.load(db_dataset)
+    print('data loaded')
+
+    
     amass_occlusion = joblib.load("sample_data/amass_copycat_occlusion_v3.pkl")
 
 

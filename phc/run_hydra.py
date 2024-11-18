@@ -68,6 +68,10 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from easydict import EasyDict
 
+#Takara
+import pygame
+pygame.init()
+
 args = None
 cfg = None
 cfg_train = None
@@ -277,7 +281,7 @@ def main(cfg_hydra: DictConfig) -> None:
     # cfg, cfg_train, logdir = load_cfg(args)
     flags.debug, flags.follow, flags.fixed, flags.divide_group, flags.no_collision_check, flags.fixed_path, flags.real_path,  flags.show_traj, flags.server_mode, flags.slow, flags.real_traj, flags.im_eval, flags.no_virtual_display, flags.render_o3d = \
         cfg.debug, cfg.follow, False, False, False, False, False, True, cfg.server_mode, False, False, cfg.im_eval, cfg.no_virtual_display, cfg.render_o3d
-
+    
     flags.test = cfg.test
     flags.add_proj = cfg.add_proj
     flags.has_eval = cfg.has_eval
@@ -327,7 +331,25 @@ def main(cfg_hydra: DictConfig) -> None:
             print(path)
             raise Exception("no file to resume!!!!")
 
+    # Takara
+    flags.rand_start = cfg.rand_start   
+
+    # cfg_train goes to im amp players, cfg goes to humanoid_env?  
+    cfg_train["params"]["config"]['mode'] = cfg.mode    
+    cfg['env']['mode'] = cfg.mode 
     
+    # cfg['env']['act_noise'] = cfg.act_noise 
+    cfg_train["params"]["config"]['act_noise'] = cfg.act_noise    
+
+    # cfg['act_noise'] = cfg.act_noise 
+
+    cfg_train["params"]["config"]['collect_start_idx'] = cfg.collect_start_idx
+    cfg["env"]['collect_start_idx'] = cfg.collect_start_idx
+        
+    cfg_train["params"]["config"]['collect_step_idx'] = None if cfg.collect_step_idx =='None' else cfg.collect_step_idx 
+    cfg["env"]['collect_step_idx'] = None if cfg.collect_step_idx =='None' else cfg.collect_step_idx 
+    
+
     os.makedirs(cfg.output_path, exist_ok=True)
     
     algo_observer = RLGPUAlgoObserver()

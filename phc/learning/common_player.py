@@ -9,7 +9,7 @@ import numpy as np
 import gc
 from gym import spaces
 
-
+ 
 class CommonPlayer(players.PpoPlayerContinuous):
 
     def __init__(self, config):
@@ -152,13 +152,13 @@ class CommonPlayer(players.PpoPlayerContinuous):
         return obs_dict
 
     def get_action(self, obs_dict, is_determenistic=False):
+        # import ipdb; ipdb.set_trace()
         output = super().get_action(obs_dict['obs'], is_determenistic)
         return output
 
     def env_step(self, env, actions):
         if not self.is_tensor_obses:
             actions = actions.cpu().numpy()
-
         obs, rewards, dones, infos = env.step(actions)
 
         if hasattr(obs, 'dtype') and obs.dtype == np.float64:

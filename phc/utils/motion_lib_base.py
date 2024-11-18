@@ -23,7 +23,7 @@ from phc.utils.flags import flags
 from enum import Enum
 USE_CACHE = False
 print("MOVING MOTION DATA TO GPU, USING CACHE:", USE_CACHE)
-
+ 
 
 class FixHeightMode(Enum):
     no_fix = 0
@@ -152,6 +152,7 @@ class MotionLibBase():
             self._motion_data_keys = np.array(self._motion_data_load)
         
         self._num_unique_motions = len(self._motion_data_list)
+        # import ipdb; ipdb.set_trace()
         if self.mode == MotionlibMode.directory:
             self._motion_data_load = joblib.load(self._motion_data_load[0]) # set self._motion_data_load to a sample of the data 
 
@@ -177,12 +178,27 @@ class MotionLibBase():
         raise NotImplementedError
 
     def load_motions(self, skeleton_trees, gender_betas, limb_weights, random_sample=True, start_idx=0, max_len=-1):
+        def create_duplicated_list(n, num_duplicates, limit, start_idx, device):
+            # Calculate the number of unique values needed
+            num_unique_values = (n + num_duplicates - 1) // num_duplicates
+
+            # Create a tensor of indices with each number repeated 'num_duplicates' times
+            indices = torch.arange(start_idx, start_idx + num_unique_values).repeat_interleave(num_duplicates)
+
+            # Apply the modulo operation to ensure values are within the limit
+            sample_idxes = torch.remainder(indices, limit).to(device)
+
+            # Truncate the tensor to the desired length
+            return sample_idxes[:n]
+
         # load motion load the same number of motions as there are skeletons (humanoids)
         if "gts" in self.__dict__:
             del self.gts, self.grs, self.lrs, self.grvs, self.gravs, self.gavs, self.gvs, self.dvs,
             del self._motion_lengths, self._motion_fps, self._motion_dt, self._motion_num_frames, self._motion_bodies, self._motion_aa
             if flags.real_traj:
                 del self.q_gts, self.q_grs, self.q_gavs, self.q_gvs
+        
+        
 
         motions = []
         self._motion_lengths = []
@@ -202,25 +218,65 @@ class MotionLibBase():
         self.num_joints = len(skeleton_trees[0].node_names)
         num_motion_to_load = len(skeleton_trees)
 
-        if random_sample:
-            sample_idxes = torch.multinomial(self._sampling_prob, num_samples=num_motion_to_load, replacement=True).to(self._device)
-        else:
-            sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
 
-        # import ipdb; ipdb.set_trace()
-        self._curr_motion_ids = sample_idxes
-        self.one_hot_motions = torch.nn.functional.one_hot(self._curr_motion_ids, num_classes = self._num_unique_motions).to(self._device)  # Testing for obs_v5
-        self.curr_motion_keys = self._motion_data_keys[sample_idxes]
-        self._sampling_batch_prob = self._sampling_prob[self._curr_motion_ids] / self._sampling_prob[self._curr_motion_ids].sum()
+        # TAKARA 
+        collect_start_idx = self.m_cfg.collect_start_idx 
+        collect_step_idx = self.m_cfg.collect_step_idx if self.m_cfg.collect_step_idx else len(skeleton_trees) 
+        
+        # if random_sample:
+            # sample_idxes = torch.multinomial(self._sampling_prob, num_samples=num_motion_to_load, replacement=True).to(self._device)
+        # else:
+        # sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
+        num_duplicates = 800
+        sample_idxes = create_duplicated_list(n=len(skeleton_trees), num_duplicates=num_duplicates, limit=int(self._num_unique_motions), start_idx=collect_start_idx, device=self._device)
+
+        name2idx = {name:idx for idx, name in enumerate(self._motion_data_keys)}
+
+        # import ipdb; ipdb.set_trace() 
+
+        handstands =  ['0-KIT_200_Handstand05_stageii'] #, '0-KIT_200_Handstand01_stageii', '0-KIT_200_Handstand04_stageii', '0-KIT_200_Handstand02_stageii', '0-KIT_200_Handstand06_stageii']
+        # cartwheels = ['0-Eyes_Japan_Dataset_takiguchi_turn-04-cartwheels-takiguchi_stageii'] #, '0-Eyes_Japan_Dataset_hamada_turn-04-cartwheels-hamada_stageii']
+        # breakdance = ['0-CMU_85_85_08_stageii'] #, '0-CMU_85_85_04_stageii' ]
+        ballet_leaps = ['0-CMU_05_05_17_stageii', ] # '0-CMU_05_05_06_stageii']#, 
+
+        walks =[
+                '0-KIT_359_walking_slow06_stageii',
+                # '0-KIT_183_walking_fast08_stageii',
+                '0-KIT_11_WalkInCounterClockwiseCircle06_stageii',
+                '0-KIT_8_WalkInClockwiseCircle08_stageii',
+                '0-KIT_3_seesaw_backwards06_stageii'
+                ]
+        
+
+        crawls = [
+            #  '0-KIT_3_crawl08_stageii',
+            #       '0-KIT_3_kneel_down_to_crawl01_stageii',
+                #   '0-Transitions_mocap_mazen_c3d_crawl_stand_stageii'
+                  '0-BMLmovi_Subject_35_F_MoSh_Subject_35_F_12_stageii'
+
+                  ]
+        jumps = ['0-KIT_3_jump_up01_stageii']
+
+        names = jumps 
+        sample_idxes = torch.tensor([name2idx[name] for name in names], device=self._device)
+        sample_idxes = torch.sort(sample_idxes).values.repeat(2000) 
+        sample_idxes = sample_idxes[:len(skeleton_trees)]
+
 
         print("\n****************************** Current motion keys ******************************")
-        print("Sampling motion:", sample_idxes[:30])
-        if len(self.curr_motion_keys) < 100:
-            print(self.curr_motion_keys)
-        else:
-            print(self.curr_motion_keys[:30], ".....")
-        print("*********************************************************************************\n")
+       
 
+        self._curr_motion_ids = sample_idxes
+        self.curr_motion_keys = self._motion_data_keys[sample_idxes]
+
+         # Takara
+        from collections import Counter 
+        counter_strings = Counter(self.curr_motion_keys)
+        for item, count in counter_strings.items(): 
+            print(f"{item}:{count}")
+
+        # self.one_hot_motions = torch.nn.functional.one_hot(self._curr_motion_ids, num_classes = self._num_unique_motions).to(self._device)  # Testing for obs_v5
+        # self._sampling_batch_prob = self._sampling_prob[self._curr_motion_ids] / self._sampling_prob[self._curr_motion_ids].sum()
 
         motion_data_list = self._motion_data_list[sample_idxes.cpu().numpy()]
         mp.set_sharing_strategy('file_descriptor')
